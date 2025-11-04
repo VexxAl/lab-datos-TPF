@@ -13,5 +13,13 @@ wheels/
 .python-version
 uv.lock
 
+# Variables de entorno
+.env
+
 # Datasets
 data/
+.dvc/cache/
+.dvc/tmp/
+.dvc/.gitignore
+.dvcignore
+/data
