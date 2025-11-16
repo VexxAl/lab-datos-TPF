@@ -1,10 +1,12 @@
+from sklearn.experimental import enable_iterative_imputer 
 import pandas as pd
+import numpy as np
 from sklearn.impute import KNNImputer, IterativeImputer
 from sklearn.linear_model import LinearRegression, BayesianRidge
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.pipeline import Pipeline
 from sklearn.neighbors import LocalOutlierFactor
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import StandardScaler, PowerTransformer
 
 
 
@@ -228,6 +230,30 @@ class SkewTransformer(BaseEstimator, TransformerMixin):
 
         return X
 
+class DataFrameStandardScaler(BaseEstimator, TransformerMixin):
+    def __init__(self, **scaler_kwargs):
+        self.scaler = StandardScaler(**scaler_kwargs)
+
+    def fit(self, X, y=None):
+        X = pd.DataFrame(X)
+        self.feature_names_in_ = X.columns
+        self.scaler.fit(X)
+        return self
+
+    def transform(self, X):
+        X = pd.DataFrame(X, columns=self.feature_names_in_)
+        X_scaled = self.scaler.transform(X)
+        return pd.DataFrame(
+            X_scaled,
+            index=X.index,
+            columns=self.feature_names_in_
+        )
+
+    def get_feature_names_out(self, input_features=None):
+        # para ser compatible con sklearn 1.7
+        return np.array(self.feature_names_in_)
+
+
 best_params_preproc = {'imputer': 'linear', 'outliers': 'clip', 'std_factor': 4.378253933658169, 'skew_method': 'yeojohnson'}
 best_features = ['Frio (Kw)', 'Frio (Kw)_ma_3', 'Frio (Kw)_ma_14', 'Sala Maq (Kw)', 'Frio (Kw)_ma_7', 'Servicios (Kw)', 'KW Obrador Contratistas', 'Frio (Kw)_lag_2', 'Tot  A130/330/430', 'KW Servicio L2']
 
@@ -247,5 +273,5 @@ full_preprocess_pipe = Pipeline([
     )),
     ("feature_selector", FeatureSelector(best_features)),
     ("skew", SkewTransformer(method=best_skew_method)),
-    ("scaler", StandardScaler()),    
+    ("scaler", DataFrameStandardScaler()),
 ])
