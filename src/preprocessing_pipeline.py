@@ -4,6 +4,8 @@ from sklearn.linear_model import LinearRegression, BayesianRidge
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.pipeline import Pipeline
 from sklearn.neighbors import LocalOutlierFactor
+from sklearn.preprocessing import StandardScaler
+
 
 
 class TimeSeriesFeatureEngineerIndex(BaseEstimator, TransformerMixin):
@@ -245,5 +247,6 @@ full_preprocess_pipe = Pipeline([
         ma_windows=(3, 7, 14),
     )),
     ("feature_selector", FeatureSelector(best_features)),
-    ("skew", SkewTransformer(method=best_skew_method)), 
+    ("skew", SkewTransformer(method=best_skew_method)),
+    ("scaler", StandardScaler()),    
 ])
