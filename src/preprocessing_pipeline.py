@@ -4,6 +4,8 @@ from sklearn.linear_model import LinearRegression, BayesianRidge
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.pipeline import Pipeline
 from sklearn.neighbors import LocalOutlierFactor
+from sklearn.preprocessing import StandardScaler
+
 
 
 class TimeSeriesFeatureEngineerIndex(BaseEstimator, TransformerMixin):
@@ -226,9 +228,8 @@ class SkewTransformer(BaseEstimator, TransformerMixin):
 
         return X
 
-#Después actualizar esto corriendo la optimización con 50 steps
-best_params_preproc = {'imputer': 'linear', 'outliers': 'clip', 'std_factor': 3.6766178466795676, 'skew_method': 'yeojohnson'}
-best_features = ['Frio (Kw)', 'Frio (Kw)_ma_3', 'Frio (Kw)_ma_14', 'Sala Maq (Kw)', 'Frio (Kw)_ma_7', 'Servicios (Kw)', 'Frio (Kw)_lag_2', 'Tot  A130/330/430', 'KW Obrador Contratistas', 'KW Servicio L2', 'Frio (Kw)_lag_3', 'Frio (Kw)_lag_24', 'KW Laboratorio', 'Totalizador_Aire_Cocina', 'Restos Planta (Kw)', 'Tot Vap Lav L3 / Hora', 'Prod Agua (Kw)', 'KW Bba Glicol Sala MAq', 'KW Gral Planta', 'KW Bba Glicol Bod', 'KW Gral Planta_Totalizadores Energia', 'Kw Admininistracion', 'Vapor Envasado (Kg)', 'Kw Molino', 'KW Cond 5. 6 y 9', 'ET Servicios (Mj)', 'VAPOR DE LINEA 4 KG', 'KW Secador Kaeser', 'KW Pta Agua/Log', 'Gas Planta (Mj)', 'KW Trafo 11', 'Vapor_L5 (KG)', 'Hl Cerveza L4', 'Tot A40/240/50/60/Centec/Filtro', 'Bodega (Kw)', 'Cocimientos Diarios', 'Frio (Kw)_lag_1', 'Medicion Gas Planta (M3)', 'Hl Producido Bodega', 'Tot  Trasiego', 'KW Linea 3', 'Totaliador_Aire_L4', 'KW Mycom 7', 'KW Enfluente Efl', 'KW Trafo 4', 'KW Trafo 9', 'Totalizador_Filtracion', 'KW Trafo 12', 'Pta Agua / Eflu (Kw)', 'Totalizador_Tq_Pulmon', 'KW Cond 7. 8 y 11', 'KW Iluminacion L3', 'KW Cond 11. 12 y 13', 'Resto Serv (Kw)', 'ET Envasado (Mj)', 'Linea 4 (Kw)', 'Vapor Cocina (Kg)', 'Totalizador_Aire_Bodega', 'Aire Elaboracion (m3)', 'Kw Casona', 'KW Mycom 3', 'Planta (Kw)', 'KW Trafo 5', 'KW Linea 3 y 4', 'KW Caldera 3', 'KW Enfluentes Hidr', 'Aire Servicios (M3)', 'KW CO2', 'KW Enfluentes Coc', 'Hl de Mosto', 'KW Toma Agua', 'Linea 3 (Kw)', 'Totaliador_Latas', 'KW Comp Kaeser', 'ET Elaboracion (Mj)', 'Aire Envasado (M3)', 'KW Mycom 6', 'KW Trafo 10', 'Totalizador_Aire_L3', 'KW Mycom 2', 'Efluentes (Kw)', 'Elaboracion (Kw)', 'Totalizador_Bodega', 'KW Filtr Carbon', 'Totalizador_Aire_L5', 'Conversion Kg/Mj', 'Hl de Mosto Copia', 'Totalizador_Aire_L2', 'KW Planta de Agua']
+best_params_preproc = {'imputer': 'linear', 'outliers': 'clip', 'std_factor': 4.378253933658169, 'skew_method': 'yeojohnson'}
+best_features = ['Frio (Kw)', 'Frio (Kw)_ma_3', 'Frio (Kw)_ma_14', 'Sala Maq (Kw)', 'Frio (Kw)_ma_7', 'Servicios (Kw)', 'KW Obrador Contratistas', 'Frio (Kw)_lag_2', 'Tot  A130/330/430', 'KW Servicio L2']
 
 best_imputer = best_params_preproc["imputer"]       
 best_outliers = best_params_preproc["outliers"]     
@@ -245,5 +246,6 @@ full_preprocess_pipe = Pipeline([
         ma_windows=(3, 7, 14),
     )),
     ("feature_selector", FeatureSelector(best_features)),
-    ("skew", SkewTransformer(method=best_skew_method)), 
+    ("skew", SkewTransformer(method=best_skew_method)),
+    ("scaler", StandardScaler()),    
 ])
