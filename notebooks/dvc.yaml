@@ -15,3 +15,6 @@ artifacts:
   ridge:
     path: ../models/ridge_v1.0.0.pkl
     type: model
+  random_forest:
+    path: ../models/random_forest_v1.0.0.pkl
+    type: model
