@@ -1,5 +1,5 @@
 outs:
-- md5: 4376f8154fc67149f2ba744dfae7d3ff
+- md5: eed37427ac97c3321f21ccfaf445795a
   size: 1065
   hash: md5
   path: ridge_v1.0.0.pkl
