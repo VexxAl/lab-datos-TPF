@@ -71,6 +71,14 @@ Para descargar los archivos, ejecuta:
 
 Este comando leerá el archivo `.dvc/config`, se conectará a Drive y descargará los archivos de datos y modelos correspondientes (ej. `data/processed/dataset_v01.csv`) a tu copia local.
 
+### 5. Ejecutar Predicciones
+
+Para poder correr el modelo final y realizar predicciones sobre tus datos de prueba debés correr:
+  
+  ```bash
+  uv run src/predict.py tu/ruta/del/.xsxl
+  ```
+
 ## Criterios de Evaluación
 
 ¿Qué tuvimos en cuenta para considerar que el TPF estaba en condiciones adecuadas?
