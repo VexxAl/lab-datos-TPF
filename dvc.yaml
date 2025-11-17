@@ -1,0 +1,6 @@
+params:
+- dvclive/params.yaml
+artifacts:
+  ridge_final:
+    path: models/ridge_final_v1.0.0.pkl
+    type: model
