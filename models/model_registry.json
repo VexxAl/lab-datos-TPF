@@ -1,9 +1,9 @@
 {
-    "ridge_v1.0.0": {
-        "model_name": "ridge",
+    "ridge_final_v1.0.0": {
+        "model_name": "ridge_final",
         "version": "v1.0.0",
-        "timestamp": "2025-11-16T22:30:23.845470",
-        "path": "models/ridge_v1.0.0.pkl",
+        "timestamp": "2025-11-17T00:00:21.025772",
+        "path": "models/ridge_final_v1.0.0.pkl",
         "hiperparametros": {
             "alpha": 7.616538614054318
         },
@@ -12,6 +12,6 @@
             "rmse": 4047.3907921190594,
             "r2": 0.5625845028877715
         },
-        "git_commit_hash": "5c3143c6c26aa38f246d9221a8514691350a064c"
+        "git_commit_hash": "30160dda181b12dde79da851951d0e4ae42f3fc3"
     }
 }
