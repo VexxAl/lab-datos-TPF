@@ -1,0 +1,17 @@
+params:
+- dvclive/params.yaml
+metrics:
+- dvclive/metrics.json
+plots:
+- dvclive/plots/metrics:
+    x: step
+artifacts:
+  lightgbm:
+    path: ../models/lightgbm_v1.0.0.pkl
+    type: model
+  xgboost:
+    path: ../models/xgboost_v1.0.0.pkl
+    type: model
+  ridge:
+    path: ../models/ridge_v1.0.0.pkl
+    type: model
