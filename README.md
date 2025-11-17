@@ -19,9 +19,9 @@ El proyecto sigue una metodología MLOps por fases. Actualmente:
 
 - [X] Fase 0: Configuración y Versionado (Git, DVC, Entorno)
 - [X] Fase 1: EDA y Refactorización de Ingesta (Merge de `feature/eda` completado)
-- [ ] Fase 2: Preprocesamiento y Feature Engineering (En progreso)
-- [ ] Fase 3: Modelado y Optimización
-- [ ] Fase 4: Pipeline de Predicción
+- [X] Fase 2: Preprocesamiento y Feature Engineering (En progreso)
+- [X] Fase 3: Modelado y Optimización
+- [X] Fase 4: Pipeline de Predicción
 
 ## ⚙️ Configuración y Reproducibilidad
 
@@ -51,7 +51,7 @@ Recomendamos usar `uv` para una gestión de entorno y paquetes ultra-rápida.
 
 ### 3. Instalar Dependencias
 
-Instala todas las librerías del proyecto (incluyendo `dvc[s3]`) desde el archivo `requirements.txt`.
+Instala todas las librerías del proyecto desde el archivo `requirements.txt`.
 
   ```bash
   uv pip install -r requirements.txt
@@ -59,15 +59,17 @@ Instala todas las librerías del proyecto (incluyendo `dvc[s3]`) desde el archiv
 
 ### 4. Sincronizar Datos con DVC (¡Importante!)
 
-Este proyecto utiliza **DVC (Data Version Control)** para gestionar los datasets sin subirlos a Git, asegurando la reproducibilidad. Los archivos `.dvc` en el repositorio (como `data.dvc`) son punteros a los datos reales almacenados en nuestro S3 remoto.
+Este proyecto utiliza **DVC (Data Version Control)** para gestionar los datasets sin subirlos a Git, asegurando la reproducibilidad. Los archivos `.dvc` en el repositorio (como `data.dvc`) son punteros a los datos reales almacenados en nuestro Google Drive remoto.
 
-Para descargar los datos, ejecuta:
+Primero, si estás trabajando con vscode, descargá la extención oficial de [DVC](https://marketplace.visualstudio.com/items?itemName=Iterative.dvc) para mejor integración.
+
+Para descargar los archivos, ejecuta:
 
   ```bash
   dvc pull
   ```
 
-Este comando leerá el archivo `.dvc/config`, se conectará al S3 y descargará los archivos de datos correspondientes (ej. `data/processed/dataset_v01.csv`) a tu copia local.
+Este comando leerá el archivo `.dvc/config`, se conectará a Drive y descargará los archivos de datos y modelos correspondientes (ej. `data/processed/dataset_v01.csv`) a tu copia local.
 
 ## Criterios de Evaluación
 
@@ -91,3 +93,7 @@ Este comando leerá el archivo `.dvc/config`, se conectará al S3 y descargará 
 - Falta de documentación (README, comentarios, justificaciones).
 - No seguir la estructura de control de versiones y branching solicitada.
 - Fallo en la implementación del versionado de datos, tracking de experimentos o registro de modelos.
+
+## Firma
+
+Dale campeón, dale campeón, el que no salta no toma porrón (de Tecate, obvio).
