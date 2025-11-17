@@ -23,6 +23,7 @@ sys.path.append(str(SRC_DIR))
 
 # --- 2. IMPORTAR EL PIPELINE DE PREPROCESAMIENTO ---
 try:
+    # Importamos el objeto NO ENTRENADO
     from preprocessing_pipeline import full_preprocess_pipe
 except ImportError:
     print("Error: No se pudo encontrar 'preprocessing_pipeline.py' en 'src/'.")
@@ -41,13 +42,21 @@ def drop_na_and_align(X, y):
     y = y.loc[mask]
     return X, y
 
-# --- 4. CONSTANTES DEL MODELO GANADOR ---
+# --- 4. CONSTANTES DE ARTEFACTOS ---
 BEST_HYPERPARAMS = {
     "alpha": 7.616538614054318  # Descubierto en modelado.ipynb
 }
 MODEL_VERSION = "v1.0.0"
+
+# Artefacto 1: Modelo
 FINAL_MODEL_NAME = "ridge_final"
 FINAL_MODEL_PATH = MODELS_DIR / f"{FINAL_MODEL_NAME}_{MODEL_VERSION}.pkl"
+
+# Artefacto 2: Pipeline
+PIPELINE_NAME = "pipeline"
+PIPELINE_PATH = MODELS_DIR / f"{PIPELINE_NAME}_{MODEL_VERSION}.pkl"
+
+# Archivo de Registro
 REGISTRY_FILE = MODELS_DIR / "model_registry.json"
 
 # --- 5. FUNCIÓN PRINCIPAL DE ENTRENAMIENTO ---
@@ -55,9 +64,9 @@ def main():
     """
     Script completo de entrenamiento y registro:
     1. Valida el modelo (Train/Test) para obtener métricas.
-    2. Re-entrena el modelo (Train+Test) para producción.
-    3. Guarda y rastrea el modelo final.
-    4. Escribe en el model_registry.json.
+    2. Guarda y registra el PIPELINE entrenado.
+    3. Re-entrena el modelo (Train+Test) para producción.
+    4. Guarda, rastrea y registra el MODELO final.
     """
     
     with Live(save_dvc_exp=True) as live:
@@ -79,9 +88,20 @@ def main():
         y_test = test_df["target_frio"]
 
         # --- Aplicar Pipeline (Fit en Train, Transform en ambos) ---
-        print("Aplicando pipeline de preprocesamiento...")
+        print("Aplicando y entrenando pipeline de preprocesamiento...")
+        # Usamos el 'full_preprocess_pipe' importado
         X_train_ready = full_preprocess_pipe.fit_transform(X_train, y_train)
         X_test_ready = full_preprocess_pipe.transform(X_test)
+        
+        # --- ¡NUEVO PASO: GUARDAR EL PIPELINE ENTRENADO! ---
+        print(f"Guardando pipeline entrenado en: {PIPELINE_PATH}")
+        os.makedirs(MODELS_DIR, exist_ok=True)
+        joblib.dump(full_preprocess_pipe, PIPELINE_PATH)
+        live.log_artifact(
+            str(PIPELINE_PATH),
+            type="pipeline",
+            name=PIPELINE_NAME
+        )
         
         try:
             feature_names = full_preprocess_pipe.get_feature_names_out()
@@ -100,21 +120,15 @@ def main():
         print("Validando modelo para obtener métricas...")
         model_for_validation = Ridge(**BEST_HYPERPARAMS)
         model_for_validation.fit(X_train_ready, y_train)
-        
         preds_test = model_for_validation.predict(X_test_ready)
         
-        # Métricas de validación (para el registro)
         final_model_metrics = {
             "mae": mean_absolute_error(y_test, preds_test),
             "rmse": root_mean_squared_error(y_test, preds_test),
             "r2": r2_score(y_test, preds_test)
         }
         print(f"Métricas de Validación (Test): {final_model_metrics}")
-        
-        # Log métricas a DVC (opcional, pero buena práctica)
         live.log_metric("test_mae", round(final_model_metrics["mae"], 4))
-        live.log_metric("test_rmse", round(final_model_metrics["rmse"], 4))
-        live.log_metric("test_r2", round(final_model_metrics["r2"], 4))
 
         # --- 7. PASO DE RE-ENTRENAMIENTO (Modelo final) ---
         print("Re-entrenando modelo con datos completos (Train+Test)...")
@@ -126,7 +140,6 @@ def main():
 
         # --- 8. GUARDAR Y RASTREAR MODELO FINAL ---
         print(f"Guardando modelo final en: {FINAL_MODEL_PATH}")
-        os.makedirs(MODELS_DIR, exist_ok=True)
         joblib.dump(final_model, FINAL_MODEL_PATH)
         
         print("Rastreando artefacto y parámetros con DVC...")
@@ -136,31 +149,25 @@ def main():
             type="model",
             name=FINAL_MODEL_NAME
         )
-        live.log_param("model_name", FINAL_MODEL_NAME)
-        live.log_param("model_version", MODEL_VERSION)
 
         # --- 9. ESCRITURA DEL REGISTRO DE MODELOS ---
         print(f"Actualizando el registro de modelos: {REGISTRY_FILE}")
         
-        # Cargar registro existente (si hay)
         registry = {}
         if os.path.exists(REGISTRY_FILE):
             with open(REGISTRY_FILE, 'r') as f:
-                try:
-                    registry = json.load(f)
-                except json.JSONDecodeError:
-                    print(f"Warning: {REGISTRY_FILE} corrupto. Se creará uno nuevo.")
+                try: registry = json.load(f)
+                except json.JSONDecodeError: registry = {}
 
-        # Obtener Git commit hash
         try:
             commit_hash = subprocess.check_output(
                 ['git', 'rev-parse', 'HEAD']).strip().decode('utf-8')
         except Exception:
-            commit_hash = "NA (git no encontrado o no es un repo)"
+            commit_hash = "NA"
 
-        # Crear/Actualizar la entrada del modelo final
-        registry_key = f"{FINAL_MODEL_NAME}_{MODEL_VERSION}"
-        registry[registry_key] = {
+        # --- Entrada 1: El Modelo Final ---
+        model_key = f"{FINAL_MODEL_NAME}_{MODEL_VERSION}"
+        registry[model_key] = {
             "model_name": FINAL_MODEL_NAME,
             "version": MODEL_VERSION,
             "timestamp": datetime.now().isoformat(),
@@ -170,11 +177,22 @@ def main():
             "git_commit_hash": commit_hash
         }
         
+        # --- Entrada 2: El Pipeline Entrenado ---
+        pipeline_key = f"{PIPELINE_NAME}_{MODEL_VERSION}"
+        registry[pipeline_key] = {
+            "model_name": PIPELINE_NAME,
+            "version": MODEL_VERSION,
+            "timestamp": datetime.now().isoformat(),
+            "path": str(PIPELINE_PATH.relative_to(PROJECT_ROOT)),
+            "metricas_validacion": None, # El pipeline no tiene métricas
+            "git_commit_hash": commit_hash
+        }
+        
         # Escribir el archivo JSON
         with open(REGISTRY_FILE, 'w') as f:
             json.dump(registry, f, indent=4)
         
-        print(f"Registro actualizado para: {registry_key}")
+        print(f"Registro actualizado con: {model_key} y {pipeline_key}")
         print("\n--- ¡Entrenamiento completado con éxito! ---")
 
 # --- 10. EJECUCIÓN DEL SCRIPT ---
