@@ -4,6 +4,7 @@ import sys
 import json
 import os
 from pathlib import Path
+from sklearn.metrics import mean_absolute_error
 
 # --- 1. CONFIGURACIÓN DE PATHS ---
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -11,13 +12,20 @@ SRC_DIR = PROJECT_ROOT / "src"
 MODELS_DIR = PROJECT_ROOT / "models"
 RESULTS_DIR = PROJECT_ROOT / "results"
 
+# Agregamos SRC al path para que joblib encuentre las clases
 sys.path.append(str(SRC_DIR))
 
-# --- 2. FUNCIÓN DE CARGA DE ARTEFACTOS (GENERALIZADA) ---
+# IMPORTANTE: Importamos el módulo donde están definidas las clases del pipeline.
+# Sin esto, joblib fallará al intentar reconstruir el objeto.
+try:
+    import preprocessing_pipeline
+except ImportError:
+    print("Warning: No se pudo importar 'preprocessing_pipeline'. Asegúrate de ejecutar desde la raíz o que src esté en el path.")
+
+# --- 2. FUNCIÓN DE CARGA DE ARTEFACTOS ---
 def load_artifact(artifact_name: str):
     """
     Carga un artefacto (modelo o pipeline) desde el registro.
-    Asume que el 'model_registry.json' contiene la clave del artefacto.
     """
     print(f"Cargando artefacto: {artifact_name}...")
     registry_path = MODELS_DIR / "model_registry.json"
@@ -33,7 +41,11 @@ def load_artifact(artifact_name: str):
         print(f"Error: El artefacto '{artifact_name}' no está en el registro.")
         sys.exit(1)
 
-    artifact_path = PROJECT_ROOT / registry[artifact_name]['path']
+    # Ajustamos el path relativo al sistema actual
+    rel_path = registry[artifact_name]['path']
+    # Fix para Windows/Linux path separator si el json viene de otro OS
+    rel_path = rel_path.replace('\\', '/')
+    artifact_path = PROJECT_ROOT / rel_path
     
     try:
         artifact = joblib.load(artifact_path)
@@ -48,9 +60,6 @@ def load_artifact(artifact_name: str):
 
 # --- 3. FUNCIÓN INTERNA PARA PROCESAR UNA SOLA HOJA ---
 def process_sheet_to_daily(xls: pd.ExcelFile, sheet_name: str) -> pd.DataFrame:
-    """
-    Helper. Carga UNA hoja, aplica lógica de totalizador y la devuelve diaria.
-    """
     print(f"  Procesando hoja: {sheet_name}...")
     try:
         df_hourly = pd.read_excel(xls, sheet_name=sheet_name, engine='openpyxl')
@@ -64,13 +73,10 @@ def process_sheet_to_daily(xls: pd.ExcelFile, sheet_name: str) -> pd.DataFrame:
             errors='coerce' 
         )
         
-        # Si 'coerce' generó NaT (Not a Time), los eliminamos
         if df_hourly['timestamp'].isnull().any():
-            print(f"  Warning: Se encontraron fechas/horas inválidas en {sheet_name}. Esas filas serán omitidas.")
             df_hourly = df_hourly.dropna(subset=['timestamp'])
 
         if df_hourly.empty:
-             print(f"  Warning: No quedaron datos en {sheet_name} después de limpiar fechas.")
              return pd.DataFrame()
 
         df_hourly_sorted = df_hourly.sort_values(by='timestamp')
@@ -85,48 +91,27 @@ def process_sheet_to_daily(xls: pd.ExcelFile, sheet_name: str) -> pd.DataFrame:
         return df_daily
 
     except Exception as e:
-        print(f"  Warning: No se pudo procesar la hoja {sheet_name}. Saltando. Error: {e}")
+        print(f"  Warning: No se pudo procesar la hoja {sheet_name}. Error: {e}")
         return pd.DataFrame()
 
-
-# --- 4. FUNCIÓN DE PREPROCESAMIENTO (CORREGIDA) ---
+# --- 4. FUNCIÓN DE PREPROCESAMIENTO ---
 def load_and_preprocess(filepath: str, pipeline):
-    """
-    Carga un *único* archivo Excel de forma eficiente (hoja por hoja)
-    y aplica el pipeline ENTRENADO.
-    """
     print(f"Iniciando preprocesamiento para: {filepath}")
 
     HOJAS_REQUERIDAS = [
-        'Consolidado EE',        
-        'Totalizadores Energia',   
-        'Consolidado Produccion',
-        'Consolidado Agua',
-        'Consolidado GasVapor',
-        'Consolidado Aire',
-        'Totalizadores Glicol',
-        'Totalizadores CO2'
+        'Consolidado EE', 'Totalizadores Energia', 'Consolidado Produccion',
+        'Consolidado Agua', 'Consolidado GasVapor', 'Consolidado Aire',
+        'Totalizadores Glicol', 'Totalizadores CO2'
     ]
     
     try:
-        print("Inspeccionando hojas del Excel...")
         xls = pd.ExcelFile(filepath)
         sheets_en_archivo = xls.sheet_names
 
-        # --- Validación ---
         if 'Consolidado EE' not in sheets_en_archivo:
             print("Error: El archivo Excel no tiene la hoja 'Consolidado EE'.")
             sys.exit(1)
 
-        hojas_faltantes = [h for h in HOJAS_REQUERIDAS if h not in sheets_en_archivo]
-        if hojas_faltantes:
-            print(f"Error: Al archivo Excel le faltan hojas que el modelo necesita:")
-            for hoja in hojas_faltantes:
-                print(f"  - {hoja}")
-            print("El script no puede continuar.")
-            sys.exit(1)
-
-        # --- Carga y Fusión (Controlada) ---
         df_daily_final = process_sheet_to_daily(xls, 'Consolidado EE')
         
         if df_daily_final.empty:
@@ -134,130 +119,151 @@ def load_and_preprocess(filepath: str, pipeline):
             sys.exit(1)
 
         for sheet_name in HOJAS_REQUERIDAS:
-            if sheet_name == 'Consolidado EE':
-                continue 
+            if sheet_name == 'Consolidado EE': continue 
+            if sheet_name not in sheets_en_archivo: continue
 
             df_daily_feature = process_sheet_to_daily(xls, sheet_name)
             
-            if df_daily_feature.empty:
-                print(f"  Warning: La hoja {sheet_name} no generó datos. Se omitirá.")
-                continue 
-            
-            df_daily_final = pd.merge(
-                df_daily_final,
-                df_daily_feature,
-                left_index=True, 
-                right_index=True,
-                how='left', # 'left' merge es correcto si 'Consolidado EE' es la base
-                suffixes=('', f'_{sheet_name}')
-            )
+            if not df_daily_feature.empty:
+                df_daily_final = pd.merge(
+                    df_daily_final, df_daily_feature,
+                    left_index=True, right_index=True,
+                    how='left', suffixes=('', f'_{sheet_name}')
+                )
         
-        print("Todas las hojas REQUERIDAS han sido procesadas y unificadas a nivel diario.")
         daily_df = df_daily_final 
+        print(f"Hojas unificadas. Shape crudo: {daily_df.shape}")
+
+        # --- Extracción de Ground Truth para Validación (si existe) ---
+        # Intentamos extraer el valor real futuro para calcular MAE después.
+        # El modelo predice t+1 basado en t.
+        # Así que el Target Real de la fila t es el valor de "Frio (Kw)" en t+1.
+        y_ground_truth = None
+        if "Frio (Kw)" in daily_df.columns:
+            print("Columna 'Frio (Kw)' encontrada: Se calcularán métricas de validación (MAE).")
+            # Shift -1 porque la fila de HOY predice MAÑANA
+            y_ground_truth = daily_df["Frio (Kw)"].shift(-1)
+        else:
+            print("Columna 'Frio (Kw)' NO encontrada: Modo inferencia pura (sin cálculo de error).")
 
     except Exception as e:
-        print(f"Error durante la carga y fusión de hojas: {e}")
+        print(f"Error durante la carga de hojas: {e}")
         sys.exit(1)
-
     
-    # --- Parte 2: Aplicar Pipeline de Scikit-Learn ---
+    # --- Aplicar Pipeline ---
     try:
-        print("Aplicando pipeline ENTRENADO (imputación, features, scaling)...")
-        
+        print("Aplicando pipeline ENTRENADO...")
         X_processed_np = pipeline.transform(daily_df)
         
-        # Reconstruir el DataFrame con las columnas transformadas
         try:
-            # El pipeline de sklearn permite acceder a los pasos por nombre
-            # Pedimos los nombres al último paso ("scaler")
             processed_feature_names = pipeline.named_steps['scaler'].get_feature_names_out()
-        except Exception as e:
-            print(f"Warning: No se pudo usar .get_feature_names_out() del scaler. {e}")
-            # Fallback (asume que los nombres no cambiaron en el scaler)
-            try:
-                processed_feature_names = pipeline.named_steps['feature_selector'].get_feature_names_out()
-            except:
-                 processed_feature_names = [f"feature_{i}" for i in range(X_processed_np.shape[1])]
-
+        except:
+            processed_feature_names = [f"feat_{i}" for i in range(X_processed_np.shape[1])]
 
         X_processed = pd.DataFrame(
             X_processed_np, 
-            index=daily_df.index, # <-- Usamos el índice original
+            index=daily_df.index,
             columns=processed_feature_names
         )
         
-        # --- Parte 4: Limpieza Final (NaNs de Lags) ---
-        # El paso 'TimeSeriesFeatureEngineerIndex' crea NaNs al principio
-        # del DataFrame (ej. lag_1 del primer día).
-        # Esos NaNs deben ser eliminados *después* de procesar.
-        X_processed = X_processed.dropna()
+        # --- Limpieza de NaNs generados por Lags ---
+        # Al crear lags, las primeras filas quedan con NaN. Debemos alinearlas con el ground truth.
+        
+        # Indices válidos tras el pipeline (el pipeline puede no dropear na, pero el modelo fallará con na)
+        # Generalmente el Imputer rellena, pero los lags del principio quedan vacíos si no hay historia.
+        # Asumimos que el imputer manejó lo que pudo, pero eliminamos remanentes si el modelo no soporta NaNs.
+        
+        # IMPORTANTE: Antes de eliminar filas en X, debemos alinear y_ground_truth si existe.
+        if y_ground_truth is not None:
+            # Unimos temporalmente para dropear juntos
+            temp_df = X_processed.copy()
+            temp_df["__target__"] = y_ground_truth
+            
+            # Eliminamos filas donde X tenga NaNs (por falta de historia para lags)
+            # OJO: No eliminamos si el target es NaN (eso es el día futuro a predecir)
+            # Solo eliminamos si faltan FEATURES.
+            rows_with_nan_features = X_processed.isna().any(axis=1)
+            X_processed = X_processed[~rows_with_nan_features]
+            
+            # Recuperamos el target alineado
+            y_ground_truth = temp_df.loc[X_processed.index, "__target__"]
+            
+        else:
+            X_processed = X_processed.dropna()
+
         final_dates = X_processed.index 
+        print(f"Datos listos para inferencia. Muestras: {len(X_processed)}")
 
-        print(f"Datos preprocesados listos. Shape final: {X_processed.shape}")
+        return X_processed, final_dates, y_ground_truth
 
-        return X_processed, final_dates
     except Exception as e:
-        print(f"Error fatal al aplicar el pipeline: {e}")
-        print("Asegúrate de que el pipeline cargado sea el correcto y esté entrenado.")
+        print(f"Error fatal al aplicar pipeline: {e}")
         sys.exit(1)
 
 # --- 5. FUNCIÓN DE PREDICCIÓN ---
 def predict_consumption(filepath: str):
-    """
-    Función principal de predicción.
-    """
-    # --- Nombres de Artefactos  ---
+    MODEL_NAME = "ridge_final_v1.0.0"
+    PIPELINE_NAME = "pipeline_v1.0.0" 
 
-    MODEL_NAME_IN_REGISTRY = "ridge_final_v1.0.0"
-    PIPELINE_NAME_IN_REGISTRY = "pipeline_v1.0.0" 
-
-    # 1. Cargar artefactos entrenados
-    model = load_artifact(artifact_name=MODEL_NAME_IN_REGISTRY) 
-    pipeline = load_artifact(artifact_name=PIPELINE_NAME_IN_REGISTRY) 
+    model = load_artifact(MODEL_NAME) 
+    pipeline = load_artifact(PIPELINE_NAME) 
     
-    # 2. Cargar y preprocesar datos "nuevos" usando el pipeline entrenado
-    X_processed, dates = load_and_preprocess(filepath, pipeline)
+    # X_processed: Features listos
+    # dates: Fechas de los datos (Día T)
+    # y_true: Consumo real del Día T+1 (si existe en el excel)
+    X_processed, dates, y_true = load_and_preprocess(filepath, pipeline)
     
     if X_processed.empty:
-        print("No se pudieron procesar datos (posiblemente por falta de historia para lags).")
-        return pd.DataFrame(columns=['fecha', 'prediccion_frio_kw'])
+        print("No hay datos suficientes para generar predicciones.")
+        return
 
     print("Generando predicciones...")
-    
-    # 3. Predecir
-    # El 'X_processed' ya tiene solo las columnas correctas
-    # gracias al 'feature_selector' dentro del pipeline
     predictions = model.predict(X_processed)
     
+    # Armar DataFrame de resultados
+    # La fecha de los datos es T. La predicción es para T+1.
     results_df = pd.DataFrame({
-        'fecha': dates.strftime('%Y-%m-%d'),
-        'prediccion_frio_kw': predictions
+        'Fecha_Datos': dates,
+        'Fecha_Prediccion': dates + pd.Timedelta(days=1), # Explicitamos que es para mañana
+        'Prediccion_Frio_Kw': predictions
     })
-    
+
+    # --- CÁLCULO DE MAE (Si aplica) ---
+    if y_true is not None:
+        results_df['Valor_Real_Frio_Kw'] = y_true.values
+        results_df['Error_Absoluto'] = (results_df['Prediccion_Frio_Kw'] - results_df['Valor_Real_Frio_Kw']).abs()
+        
+        # Calculamos MAE solo sobre las filas que tienen Valor Real (excluimos la última predicción del futuro desconocido)
+        valid_validation = results_df.dropna(subset=['Valor_Real_Frio_Kw'])
+        
+        if not valid_validation.empty:
+            mae = mean_absolute_error(valid_validation['Valor_Real_Frio_Kw'], valid_validation['Prediccion_Frio_Kw'])
+            print("\n" + "="*40)
+            print(f"RESULTADO DE VALIDACIÓN")
+            print(f"MAE (Mean Absolute Error): {mae:.4f} Kw")
+            print(f"Filas validadas: {len(valid_validation)}")
+            print("="*40 + "\n")
+        else:
+            print("\nNota: Se encontraron datos históricos, pero no suficientes pares consecutivos para calcular MAE.")
+            
     return results_df
 
 # --- 6. BLOQUE DE EJECUCIÓN ---
 if __name__ == "__main__":
-    
     if len(sys.argv) < 2:
-        print("Error: Debes proporcionar la ruta al archivo Excel de entrada.")
-        print(f"Uso: python {sys.argv[0]} <ruta_al_excel>")
+        print("Error: Falta la ruta al archivo Excel.")
+        print(f"Uso: python src/predict.py datos_nuevos.xlsx")
         sys.exit(1)
         
     input_filepath = sys.argv[1]
-    
     if not os.path.exists(input_filepath):
-        print(f"Error: No se encuentra el archivo en: {input_filepath}")
+        print(f"Error: No existe el archivo {input_filepath}")
         sys.exit(1)
 
-    # Iniciar la ejecución
     results = predict_consumption(input_filepath)
     
-    # Guardar resultados
-    os.makedirs(RESULTS_DIR, exist_ok=True)
-    output_csv = RESULTS_DIR / "predicciones.csv"
-    
-    results.to_csv(output_csv, index=False)
-    
-    print(f"\n¡Éxito!")
-    print(f"Predicciones generadas en: {output_csv}")
+    if results is not None:
+        os.makedirs(RESULTS_DIR, exist_ok=True)
+        output_csv = RESULTS_DIR / "predicciones_con_mae.csv"
+        results.to_csv(output_csv, index=False)
+        print(f"Resultados guardados en: {output_csv}")
