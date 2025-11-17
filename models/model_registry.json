@@ -1,0 +1,17 @@
+{
+    "ridge_v1.0.0": {
+        "model_name": "ridge",
+        "version": "v1.0.0",
+        "timestamp": "2025-11-16T22:30:23.845470",
+        "path": "models/ridge_v1.0.0.pkl",
+        "hiperparametros": {
+            "alpha": 7.616538614054318
+        },
+        "metricas_validacion": {
+            "mae": 2895.554370099353,
+            "rmse": 4047.3907921190594,
+            "r2": 0.5625845028877715
+        },
+        "git_commit_hash": "5c3143c6c26aa38f246d9221a8514691350a064c"
+    }
+}
